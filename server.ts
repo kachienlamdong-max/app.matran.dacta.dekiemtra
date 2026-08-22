@@ -9,7 +9,7 @@ dotenv.config();
 const app = express();
 const PORT = 3000;
 
-// Enable JSON parser with large limit for documents
+// Enable JSON parser with large limit for documents (up to 50MB)
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
@@ -84,6 +84,16 @@ let teachersDb: Array<{
     createdAt: '2025-03-02T16:10:00.000Z',
     avatarColor: 'bg-amber-600',
   },
+  {
+    id: 't-6',
+    fullName: 'Cô Hoàng Thu Hà',
+    email: 'thuha.dialy@gmail.com',
+    subject: 'Địa lí',
+    gradeLevel: 'Lớp 12',
+    schoolName: 'THPT Chuyên Phan Bội Châu (Nghệ An)',
+    createdAt: '2025-03-05T10:20:00.000Z',
+    avatarColor: 'bg-teal-600',
+  },
 ];
 
 let feedbacksDb: Array<{
@@ -97,6 +107,15 @@ let feedbacksDb: Array<{
 }> = [
   {
     id: 'fb-1',
+    teacherName: 'Cô Hoàng Thu Hà',
+    schoolName: 'THPT Chuyên Phan Bội Châu',
+    subject: 'Địa lí',
+    rating: 5,
+    comment: 'Tính năng AI đọc tài liệu file PDF và Word phân tích Yêu cầu cần đạt môn Địa lí lớp 10, 11, 12 cực kỳ chuẩn! Tự động bóc tách các câu hỏi Atlat, bảng số liệu và dạng Đúng/Sai 4 ý rất chính xác.',
+    createdAt: '2025-03-06T08:15:00.000Z',
+  },
+  {
+    id: 'fb-2',
     teacherName: 'Thầy Nguyễn Văn An',
     schoolName: 'THPT Chuyên Hà Nội - Amsterdam',
     subject: 'Toán học',
@@ -105,7 +124,7 @@ let feedbacksDb: Array<{
     createdAt: '2025-02-20T10:15:00.000Z',
   },
   {
-    id: 'fb-2',
+    id: 'fb-3',
     teacherName: 'Cô Trần Thị Mai',
     schoolName: 'THPT Chu Văn An',
     subject: 'Ngữ văn',
@@ -113,21 +132,12 @@ let feedbacksDb: Array<{
     comment: 'Rất tiện lợi cho giáo viên khi xây dựng đề kiểm tra định kì và bản đặc tả nộp tổ chuyên môn. Đề xuất đúng ngữ liệu đọc hiểu và thang điểm nghị luận.',
     createdAt: '2025-02-22T14:30:00.000Z',
   },
-  {
-    id: 'fb-3',
-    teacherName: 'Thầy Lê Hoàng Nam',
-    schoolName: 'THPT Chuyên Lê Hồng Phong',
-    subject: 'Vật lí',
-    rating: 5,
-    comment: 'Phần trắc nghiệm Đúng/Sai 4 lệnh hỏi và Trả lời ngắn số học định dạng 2025 được sinh rất chuẩn xác, câu hỏi vận dụng thực tế hay.',
-    createdAt: '2025-02-24T09:40:00.000Z',
-  },
 ];
 
 let statsData = {
-  totalExamsGenerated: 1428,
-  totalMatrixCreated: 2650,
-  totalWordDownloads: 1894,
+  totalExamsGenerated: 1580,
+  totalMatrixCreated: 2890,
+  totalWordDownloads: 2140,
 };
 
 // ==========================================
@@ -146,7 +156,7 @@ app.get('/api/stats', (req, res) => {
     totalExamsGenerated: statsData.totalExamsGenerated,
     totalMatrixCreated: statsData.totalMatrixCreated,
     totalWordDownloads: statsData.totalWordDownloads,
-    activeUsersOnline: Math.floor(Math.random() * 12) + 24,
+    activeUsersOnline: Math.floor(Math.random() * 12) + 28,
     subjectCounts,
     teachers: teachersDb.slice(0, 10),
   });
@@ -176,7 +186,7 @@ app.post('/api/teachers/auth', (req, res) => {
       id: `t-${Date.now()}`,
       fullName: fullName.trim(),
       email: email.trim(),
-      subject: subject || 'Toán học',
+      subject: subject || 'Địa lí',
       gradeLevel: gradeLevel || 'Lớp 12',
       schoolName: schoolName || 'Trường THPT',
       createdAt: new Date().toISOString(),
@@ -184,7 +194,6 @@ app.post('/api/teachers/auth', (req, res) => {
     };
     teachersDb.unshift(teacher);
   } else {
-    // Update profile
     teacher.fullName = fullName || teacher.fullName;
     teacher.subject = subject || teacher.subject;
     teacher.gradeLevel = gradeLevel || teacher.gradeLevel;
@@ -219,14 +228,116 @@ app.post('/api/feedback', (req, res) => {
   res.json({ success: true, feedback: newFeedback });
 });
 
-// 4. AI Generator: Ma trận & Bản đặc tả theo chuẩn Bộ GD&ĐT (Supporting both /api/matrix/generate and /api/generate-matrix-spec)
+// 4. AI Document Reader & Curriculum Extractor (Đọc file Word / PDF / Text và bóc tách Yêu cầu cần đạt GDPT 2018)
+app.post('/api/ai-extract-requirements', async (req, res) => {
+  try {
+    const {
+      fileBase64,
+      mimeType,
+      rawText = '',
+      fileName = '',
+      subject = '',
+      grade = '',
+    } = req.body;
+
+    if (!fileBase64 && !rawText) {
+      return res.status(400).json({ success: false, message: 'Không tìm thấy dữ liệu tệp tin hoặc văn bản để phân tích' });
+    }
+
+    const systemPrompt = `Bạn là Chuyên gia Thẩm định Chương trình và Đo lường Đánh giá Giáo dục của Bộ Giáo dục và Đào tạo Việt Nam.
+Nhiệm vụ của bạn là ĐỌC VÀ PHÂN TÍCH TOÀN DIỆN TÀI LIỆU (File Word/PDF/Văn bản) do giáo viên tải lên.
+
+Tài liệu này có thể là:
+- Chương trình môn học GDPT 2018 (ví dụ: Địa lí, Lịch sử & Địa lí, Toán, Văn, KHTN, Vật lí, Hóa học, Sinh học, v.v.).
+- Kế hoạch dạy học / Phân phối chương trình / Đề cương ôn tập / Khung bài học của trường THPT/THCS.
+- Bảng đặc tả hoặc danh sách Yêu cầu cần đạt của các chủ đề.
+
+HÃY THỰC HIỆN CÁC BƯỚC:
+1. Nhận diện chính xác Môn học (ví dụ: Địa lí, Lịch sử, Toán học...) và Khối lớp (Lớp 10, Lớp 11, Lớp 12, Lớp 6, 7, 8, 9...) nếu có trong tài liệu (hoặc đối chiếu với môn "${subject || 'Địa lí'}" và khối "${grade || 'Lớp 12'}").
+2. Bóc tách từng CHỦ ĐỀ / CHƯƠNG và các BÀI HỌC / ĐƠN VỊ KIẾN THỨC tương ứng.
+3. Với mỗi chủ đề/bài học, trích xuất và chuẩn hóa YÊU CẦU CẦN ĐẠT theo 4 mức độ tư duy chuẩn GDPT 2018:
+   - Nhận biết: Các khái niệm, đối tượng địa lí, vị trí, tọa độ, số liệu, hiện tượng cơ bản.
+   - Thông hiểu: Giải thích nguyên nhân, phân tích mối quan hệ nhân quả, so sánh, phân tích biểu đồ, bảng số liệu hoặc Atlat.
+   - Vận dụng: Tính toán chỉ số (mật độ dân số, cán cân xuất nhập khẩu, tốc độ tăng trưởng...), giải thích thực tế địa phương/quốc gia.
+   - Vận dụng cao: Đề xuất giải pháp bảo vệ môi trường, định hướng phát triển bền vững, tổng hợp kiến thức liên môn.
+4. Tạo văn bản chuẩn hóa (formattedRequirements) để nạp thẳng vào Ma trận đề thi.
+
+TRẢ VỀ JSON HỢP LỆ THEO CẤU TRÚC:
+{
+  "detectedSubject": "Địa lí",
+  "detectedGrade": "Lớp 12",
+  "summary": "Tóm tắt ngắn gọn phạm vi tài liệu (VD: Tài liệu gồm 3 chủ đề trọng tâm Địa lí tự nhiên Việt Nam, 8 đơn vị bài học)",
+  "topics": [
+    {
+      "id": "top-1",
+      "topicName": "Tên chủ đề / Chương",
+      "units": ["Bài 1: Tên bài 1", "Bài 2: Tên bài 2"],
+      "learningOutcomes": {
+        "nhanBiet": "Mô tả yêu cầu mức nhận biết...",
+        "thongHieu": "Mô tả yêu cầu mức thông hiểu...",
+        "vanDung": "Mô tả yêu cầu mức vận dụng...",
+        "vanDungCao": "Mô tả yêu cầu mức vận dụng cao..."
+      }
+    }
+  ],
+  "formattedRequirements": "CHỦ ĐỀ 1: ...\\n- Bài 1:...\\n  + Nhận biết:...\\n  + Thông hiểu:...\\n  + Vận dụng:...\\n  + Vận dụng cao:..."
+}`;
+
+    let contents: any[] = [];
+
+    if (fileBase64 && mimeType === 'application/pdf') {
+      contents = [
+        {
+          inlineData: {
+            mimeType: 'application/pdf',
+            data: fileBase64,
+          },
+        },
+        {
+          text: `${systemPrompt}\n\nTên tệp: ${fileName}\nMôn học dự kiến: ${subject || 'Địa lí'}\nKhối lớp dự kiến: ${grade || 'Lớp 12'}`,
+        },
+      ];
+    } else {
+      contents = [
+        {
+          text: `${systemPrompt}\n\nTÊN TỆP: ${fileName}\nMÔN HỌC: ${subject || 'Địa lí'}\nKHỐI LỚP: ${grade || 'Lớp 12'}\n\nNỘI DUNG TÀI LIỆU TRÍCH XUẤT:\n"""\n${(rawText || '').slice(0, 40000)}\n"""`,
+        },
+      ];
+    }
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.7-flash',
+      contents,
+      config: {
+        responseMimeType: 'application/json',
+        temperature: 0.2,
+      },
+    });
+
+    const resultText = response.text || '{}';
+    const parsed = JSON.parse(resultText);
+
+    res.json({
+      success: true,
+      data: parsed,
+    });
+  } catch (error: any) {
+    console.error('Error extracting requirements with AI:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Lỗi khi phân tích tài liệu Yêu cầu cần đạt bằng AI',
+    });
+  }
+});
+
+// 5. AI Generator: Ma trận & Bản đặc tả theo chuẩn Bộ GD&ĐT
 const handleMatrixGenerate = async (req: express.Request, res: express.Response) => {
   try {
     const rawInfo = req.body.info || req.body;
     const {
-      subject = 'Toán học',
+      subject = 'Địa lí',
       grade = 'Lớp 12',
-      examType = 'Kiểm tra Giữa Học kì 1',
+      examType = 'Kiểm tra giữa học kì 1',
       durationMinutes = 45,
       structureOption = 'option1',
       customConfig,
@@ -243,7 +354,7 @@ const handleMatrixGenerate = async (req: express.Request, res: express.Response)
     };
 
     const prompt = `Bạn là Chuyên gia Khảo thí và Đo lường Đánh giá Giáo dục của Bộ Giáo dục và Đào tạo Việt Nam.
-Hãy xây dựng MA TRẬN ĐỀ KIỂM TRA ĐỊNH KÌ và BẢN ĐẶC TẢ MA TRẬN ĐỀ KIỂM TRA chuẩn xác 100% theo Chương trình Giáo dục phổ thông 2018 và định dạng đề thi mới của Bộ GD&ĐT.
+Hãy xây dựng MA TRẬN ĐỀ KIỂM TRA ĐỊNH KÌ và BẢN ĐẶC TẢ MA TRẬN ĐỀ KIỂM TRA chuẩn xác 100% theo Chương trình Giáo dục phổ thông 2018 và định dạng đề thi mới nhất 2025 của Bộ GD&ĐT.
 
 THÔNG TIN ĐỀ THI:
 - Môn học: ${subject}
@@ -251,13 +362,19 @@ THÔNG TIN ĐỀ THI:
 - Đợt kiểm tra: ${examType}
 - Thời gian làm bài: ${durationMinutes} phút
 - Cấu trúc đề: ${structureDescriptions[structureOption as keyof typeof structureDescriptions] || structureDescriptions.option1}
-- YÊU CẦU CẦN ĐẠT CỦA MÔN HỌC/BÀI HỌC (CĂN CỨ ĐỐI CHIẾU CHÍNH XÁC):
+- CĂN CỨ YÊU CẦU CẦN ĐẠT CỦA MÔN HỌC ĐỐI CHIẾU CHÍNH XÁC:
 """
-${requirementsText || 'Xây dựng dựa trên chuẩn chương trình GDPT 2018 cho môn ' + subject + ' ' + grade}
+${requirementsText ? requirementsText.slice(0, 25000) : 'Áp dụng đầy đủ chuẩn kiến thức và Yêu cầu cần đạt Chương trình GDPT 2018 cho môn ' + subject + ' ' + grade}
 """
 
-YÊU CẦU ĐẦU RA JSON CHUẨN:
-Hãy trả về một JSON hợp lệ với cấu trúc chính xác sau (Lưu ý: tất cả công thức Toán/Lý/Hóa phải đặt trong dấu $ hoặc $$):
+QUY ĐỊNH CHUYÊN MÔN:
+1. Đối với môn Địa lí / Lịch sử & Địa lí:
+   - Các chủ đề phải bám sát chương trình GDPT 2018 (Ví dụ Địa lí 12: Vị trí địa lí và phạm vi lãnh thổ, Đặc điểm chung của tự nhiên, Vấn đề sử dụng và bảo vệ tự nhiên, Địa lí dân cư, Địa lí các ngành kinh tế, Các vùng kinh tế).
+   - Bản đặc tả phải ghi rõ yêu cầu cần đạt kiểm tra kĩ năng khai thác Atlat Địa lí Việt Nam, kĩ năng nhận xét và tính toán bảng số liệu, đọc biểu đồ địa lí.
+2. Đối với các môn Tự nhiên & Xã hội khác: Phân bổ đều các cấp độ Nhận biết (~30-40%), Thông hiểu (~30-40%), Vận dụng (~20%), Vận dụng cao (~10%).
+3. Mọi công thức Toán/Lý/Hóa/Số học trong bản đặc tả phải đặt trong dấu $...$ (nếu có).
+
+YÊU CẦU ĐẦU RA JSON HỢP LỆ CHÍNH XÁC:
 {
   "matrix": {
     "topics": [
@@ -332,14 +449,14 @@ Hãy trả về một JSON hợp lệ với cấu trúc chính xác sau (Lưu ý
 app.post('/api/matrix/generate', handleMatrixGenerate);
 app.post('/api/generate-matrix-spec', handleMatrixGenerate);
 
-// 5. AI Generator: Sinh đề kiểm tra mẫu và đầy đủ các phần câu hỏi có LaTeX (Supporting both /api/exam/generate and /api/generate-exam)
+// 6. AI Generator: Sinh đề kiểm tra mẫu và đầy đủ các phần câu hỏi có LaTeX
 const handleExamGenerate = async (req: express.Request, res: express.Response) => {
   try {
     const rawInfo = req.body.info || req.body;
     const {
-      subject = 'Toán học',
+      subject = 'Địa lí',
       grade = 'Lớp 12',
-      examType = 'Kiểm tra Giữa Học kì 1',
+      examType = 'Kiểm tra giữa học kì 1',
       durationMinutes = 45,
       structureOption = 'option1',
     } = rawInfo;
@@ -356,20 +473,18 @@ THÔNG TIN:
 - Môn học: ${subject}
 - Khối: ${grade} (${examType}, ${durationMinutes} phút)
 - Yêu cầu cấu trúc: ${structureOption}
-- MA TRẬN & BẢN ĐẶC TẢ:
+- MA TRẬN & BẢN ĐẶC TẢ ĐÃ DUYỆT:
 ${JSON.stringify({ matrix, specification }, null, 2)}
 
-QUY TẮC ĐẶC BIỆT VỀ CÔNG THỨC & NGỮ LIỆU:
-1. Đối với các môn Tự nhiên (Toán, Vật lí, Hóa học, Sinh học, Tin học, KHTN):
+QUY TẮC ĐẶC BIỆT THEO MÔN HỌC:
+1. Đối với môn Địa lí:
+   - Các câu hỏi Phần I & Phần II phải phong phú, bao gồm câu hỏi lý thuyết, câu hỏi khai thác Atlat Địa lí Việt Nam (chỉ dẫn rõ trang Atlat hoặc đối tượng), câu hỏi nhận xét bảng số liệu/biểu đồ, câu hỏi tình huống thực tiễn.
+   - Phần II (TN Đúng/Sai): Đoạn dẫn về khí hậu, tự nhiên, dân cư hoặc kinh tế với đúng 4 ý a), b), c), d).
+   - Phần III (Trả lời ngắn): Các bài toán tính toán địa lí (mật độ dân số, cán cân thương mại, tỉ suất gia tăng tự nhiên, năng suất lúa, tỉ trọng %, cự ly thực tế) với đáp số rõ ràng.
+   - Phần IV (Tự luận): Câu hỏi phân tích, giải thích hoặc vẽ/nhận xét bảng số liệu kèm barem điểm từng ý chi tiết.
+2. Đối với các môn Tự nhiên (Toán, Vật lí, Hóa học, Sinh học, Tin học, KHTN):
    - Mọi công thức Toán/Lý/Hóa, ký hiệu vectơ, phân số, tích phân, căn bậc hai, phương trình phản ứng hóa học PHẢI dùng chuẩn LaTeX kẹp giữa $...$ (inline) hoặc $$...$$ (block).
-   - Ví dụ Toán: $y = \\frac{2x - 1}{x + 1}$, $\\vec{u} = (1; -2; 3)$, $\\int_0^1 x e^x dx$.
-   - Ví dụ Vật lí: $Q = mc\\Delta T$, $pV = nRT$, $F = k\\frac{|q_1 q_2|}{r^2}$.
-   - Ví dụ Hóa học: $\\text{CH}_3\\text{COOCH}_3 + \\text{NaOH} \\xrightarrow{t^\\circ} \\text{CH}_3\\text{COONa} + \\text{CH}_3\\text{OH}$.
-2. Đối với môn Ngữ văn/Khoa học xã hội: Đưa ra ngữ liệu đoạn trích/văn bản đầy đủ, câu hỏi đọc hiểu và đề viết rõ ràng.
-3. Phần I (TNKQ 4 lựa chọn): Mỗi câu có 4 phương án A, B, C, D rõ ràng, kèm đáp án đúng ('A'|'B'|'C'|'D') và lời giải thích chi tiết.
-4. Phần II (TN Đúng/Sai): Mỗi câu gồm đoạn dẫn và đúng 4 lệnh hỏi a), b), c), d), kèm giá trị isCorrect (true/false) và lời giải thích.
-5. Phần III (Trả lời ngắn): Mỗi câu là câu hỏi bài toán/tình huống yêu cầu kết quả cụ thể (số thực, số nguyên, phân số, v.v.), kèm đáp số và lời giải.
-6. Phần IV (Tự luận): Câu hỏi tự luận với thang điểm (maxPoints) và các bước chấm (gradingGuide) chi tiết.
+3. Đối với môn Ngữ văn/Khoa học xã hội: Đưa ra ngữ liệu đoạn trích/văn bản đầy đủ, câu hỏi đọc hiểu và đề viết rõ ràng.
 
 TRẢ VỀ JSON HỢP LỆ VỚI CẤU TRÚC:
 {
@@ -386,7 +501,7 @@ TRẢ VỀ JSON HỢP LỆ VỚI CẤU TRÚC:
           "D": "Phương án D"
         },
         "answer": "A",
-        "explanation": "Lời giải thích...",
+        "explanation": "Lời giải thích chi tiết...",
         "topic": "Tên chủ đề",
         "level": "Nhận biết"
       }
@@ -395,12 +510,12 @@ TRẢ VỀ JSON HỢP LỆ VỚI CẤU TRÚC:
       {
         "id": "p2-q1",
         "number": 1,
-        "prompt": "Cho hàm số/hệ chất...",
+        "prompt": "Cho đoạn tư liệu/bảng số liệu...",
         "statements": [
-          { "id": "a", "text": "Khẳng định a", "isCorrect": true, "explanation": "Giải thích a" },
-          { "id": "b", "text": "Khẳng định b", "isCorrect": false, "explanation": "Giải thích b" },
-          { "id": "c", "text": "Khẳng định c", "isCorrect": true, "explanation": "Giải thích c" },
-          { "id": "d", "text": "Khẳng định d", "isCorrect": false, "explanation": "Giải thích d" }
+          { "id": "a", "text": "Ý a", "isCorrect": true, "explanation": "Giải thích a" },
+          { "id": "b", "text": "Ý b", "isCorrect": false, "explanation": "Giải thích b" },
+          { "id": "c", "text": "Ý c", "isCorrect": true, "explanation": "Giải thích c" },
+          { "id": "d", "text": "Ý d", "isCorrect": false, "explanation": "Giải thích d" }
         ],
         "topic": "Tên chủ đề",
         "level": "Thông hiểu"
@@ -410,9 +525,9 @@ TRẢ VỀ JSON HỢP LỆ VỚI CẤU TRÚC:
       {
         "id": "p3-q1",
         "number": 1,
-        "prompt": "Nội dung câu hỏi tính toán...",
-        "answer": "12.5",
-        "explanation": "Chi tiết các bước giải ra đáp số 12.5",
+        "prompt": "Nội dung câu hỏi tính toán/trả lời số liệu ngắn...",
+        "answer": "290",
+        "explanation": "Chi tiết các bước tính ra đáp số...",
         "topic": "Tên chủ đề",
         "level": "Vận dụng"
       }
@@ -424,8 +539,8 @@ TRẢ VỀ JSON HỢP LỆ VỚI CẤU TRÚC:
         "prompt": "Đề bài câu hỏi tự luận...",
         "maxPoints": 1.0,
         "gradingGuide": [
-          { "step": "Bước 1: Viết phương trình / nêu luận điểm", "points": 0.5 },
-          { "step": "Bước 2: Tính toán kết quả / kết luận", "points": 0.5 }
+          { "step": "Ý 1: Nêu luận điểm / giải thích", "points": 0.5 },
+          { "step": "Ý 2: Phân tích số liệu / kết luận", "points": 0.5 }
         ],
         "topic": "Tên chủ đề",
         "level": "Vận dụng cao"
@@ -468,25 +583,6 @@ TRẢ VỀ JSON HỢP LỆ VỚI CẤU TRÚC:
 
 app.post('/api/exam/generate', handleExamGenerate);
 app.post('/api/generate-exam', handleExamGenerate);
-
-// 6. Parse Document Text (support TXT / Base64 docx extract)
-app.post('/api/parse-document', async (req, res) => {
-  try {
-    const { content, fileName } = req.body;
-    if (!content) {
-      return res.status(400).json({ error: 'Không có dữ liệu tệp tin' });
-    }
-
-    res.json({
-      success: true,
-      extractedText: content,
-      fileName,
-      charCount: content.length,
-    });
-  } catch (error: any) {
-    res.status(500).json({ error: 'Lỗi khi xử lý tệp tin' });
-  }
-});
 
 // 7. Increment download counter
 app.post('/api/stats/download', (req, res) => {

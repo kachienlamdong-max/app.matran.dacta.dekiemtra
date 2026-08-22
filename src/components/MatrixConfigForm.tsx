@@ -566,7 +566,9 @@ export const MatrixConfigForm: React.FC<MatrixConfigFormProps> = ({
           sourceFileName={info.sourceFileName}
           setSourceFileName={(name) => setInfo((prev) => ({ ...prev, sourceFileName: name }))}
           selectedSubject={info.subject}
+          setSelectedSubject={(subject) => setInfo((prev) => ({ ...prev, subject }))}
           selectedGrade={info.grade}
+          setSelectedGrade={(grade) => setInfo((prev) => ({ ...prev, grade }))}
           onApplyPreset={handleApplyPreset}
         />
       </div>
