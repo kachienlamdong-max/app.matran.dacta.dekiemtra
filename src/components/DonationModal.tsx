@@ -12,7 +12,6 @@ interface BankConfig {
   bankId: string;
   bankName: string;
   accountNumber: string;
-  accountName: string;
   amount: number;
 }
 
@@ -39,7 +38,6 @@ const DEFAULT_CONFIG: BankConfig = {
   bankId: 'agribank',
   bankName: 'Agribank (Ngân hàng Nông nghiệp & PTNT)',
   accountNumber: '5495215016444',
-  accountName: 'TRAN THI KIM ANH',
   amount: 5000,
 };
 
@@ -68,8 +66,8 @@ export const DonationModal: React.FC<DonationModalProps> = ({ isOpen, onClose, t
 
   const transferContent = `Ung ho EduMatrix AI ${teacherName ? teacherName.replace(/[^a-zA-Z0-9 ]/g, '') : ''}`.trim();
 
-  // VietQR URL
-  const vietQrUrl = `https://img.vietqr.io/image/${bankConfig.bankId}-${bankConfig.accountNumber}-compact2.png?amount=${bankConfig.amount}&addInfo=${encodeURIComponent(transferContent)}&accountName=${encodeURIComponent(bankConfig.accountName)}`;
+  // VietQR URL (chỉ cần ngân hàng, số tài khoản, số tiền và nội dung)
+  const vietQrUrl = `https://img.vietqr.io/image/${bankConfig.bankId}-${bankConfig.accountNumber}-compact2.png?amount=${bankConfig.amount}&addInfo=${encodeURIComponent(transferContent)}`;
 
   const handleCopy = (text: string, fieldName: string) => {
     navigator.clipboard.writeText(text);
@@ -82,7 +80,6 @@ export const DonationModal: React.FC<DonationModalProps> = ({ isOpen, onClose, t
     const updated = {
       ...editForm,
       accountNumber: editForm.accountNumber.trim().replace(/\s+/g, ''),
-      accountName: editForm.accountName.trim().toUpperCase(),
     };
     setBankConfig(updated);
     localStorage.setItem('edumatrix_bank_config', JSON.stringify(updated));
@@ -196,20 +193,6 @@ export const DonationModal: React.FC<DonationModalProps> = ({ isOpen, onClose, t
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Tên chủ tài khoản (In hoa không dấu):
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ví dụ: NGUYEN VAN A"
-                  value={editForm.accountName}
-                  onChange={(e) => setEditForm({ ...editForm, accountName: e.target.value.toUpperCase() })}
-                  className="w-full text-xs p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-hidden font-mono"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Số tiền gợi ý (VNĐ):
                 </label>
                 <input
@@ -258,7 +241,7 @@ export const DonationModal: React.FC<DonationModalProps> = ({ isOpen, onClose, t
                   />
                   <div id="qr-svg-fallback" style={{ display: 'none' }} className="p-2">
                     <QRCodeSVG
-                      value={`2|99||${bankConfig.accountName}|${bankConfig.bankName}|${bankConfig.accountNumber}|${bankConfig.amount}|${transferContent}`}
+                      value={`2|99|||${bankConfig.bankName}|${bankConfig.accountNumber}|${bankConfig.amount}|${transferContent}`}
                       size={180}
                       level="H"
                     />
@@ -277,14 +260,6 @@ export const DonationModal: React.FC<DonationModalProps> = ({ isOpen, onClose, t
                   <span className="text-slate-500">Ngân hàng:</span>
                   <span className="font-bold text-slate-900 text-right truncate max-w-[220px]">
                     {bankConfig.bankName}
-                  </span>
-                </div>
-
-                {/* Account Holder Name */}
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-500">Chủ tài khoản:</span>
-                  <span className="font-mono font-bold text-slate-900 uppercase">
-                    {bankConfig.accountName}
                   </span>
                 </div>
 
