@@ -1,7 +1,7 @@
 import express from 'express';
 import path from 'path';
 import dotenv from 'dotenv';
-import { GoogleGenAI, Type } from '@google/genai';
+import { GoogleGenAI } from '@google/genai';
 import { createServer as createViteServer } from 'vite';
 
 dotenv.config();
@@ -154,7 +154,7 @@ app.get('/api/stats', (req, res) => {
 
 // 2. Register or Login Teacher
 app.post('/api/teachers/auth', (req, res) => {
-  const { fullName, email, subject, gradeLevel, schoolName, province } = req.body;
+  const { fullName, email, subject, gradeLevel, schoolName } = req.body;
 
   if (!fullName || !email) {
     return res.status(400).json({ error: 'Vui lòng cung cấp đầy đủ Họ tên và Email' });
@@ -219,19 +219,19 @@ app.post('/api/feedback', (req, res) => {
   res.json({ success: true, feedback: newFeedback });
 });
 
-// 4. AI Generator: Ma trận & Bản đặc tả theo chuẩn Bộ GD&ĐT
-app.post('/api/generate-matrix-spec', async (req, res) => {
+// 4. AI Generator: Ma trận & Bản đặc tả theo chuẩn Bộ GD&ĐT (Supporting both /api/matrix/generate and /api/generate-matrix-spec)
+const handleMatrixGenerate = async (req: express.Request, res: express.Response) => {
   try {
+    const rawInfo = req.body.info || req.body;
     const {
-      subject,
-      grade,
-      examType,
-      durationMinutes,
-      structureOption,
+      subject = 'Toán học',
+      grade = 'Lớp 12',
+      examType = 'Kiểm tra Giữa Học kì 1',
+      durationMinutes = 45,
+      structureOption = 'option1',
       customConfig,
-      requirementsText,
-      topicsList,
-    } = req.body;
+      requirementsText = '',
+    } = rawInfo;
 
     statsData.totalMatrixCreated += 1;
 
@@ -296,7 +296,7 @@ Hãy trả về một JSON hợp lệ với cấu trúc chính xác sau (Lưu ý
       "order": 1,
       "topic": "Tên chủ đề",
       "unit": "Tên bài / mạch kiến thức",
-      "learningOutcomes": "Mô tả chi tiết năng lực / yêu cầu cần đạt kiểm tra theo chuẩn",
+      "learningOutcomes": "Mô tả chi tiết năng lực / yêu cầu cần đạt kiểm tra theo chuẩn GDPT 2018",
       "partType": "part1",
       "partTypeName": "Phần I: TNKQ 4 lựa chọn",
       "cognitiveLevel": "Nhận biết",
@@ -318,26 +318,34 @@ Hãy trả về một JSON hợp lệ với cấu trúc chính xác sau (Lưu ý
     const resultText = response.text || '{}';
     const parsedData = JSON.parse(resultText);
 
-    res.json(parsedData);
+    res.json({
+      success: true,
+      matrix: parsedData.matrix,
+      specification: parsedData.specification || [],
+    });
   } catch (error: any) {
-    console.error('Error in generate-matrix-spec:', error);
-    res.status(500).json({ error: error.message || 'Lỗi khi tạo ma trận và bản đặc tả bằng AI' });
+    console.error('Error in matrix generation:', error);
+    res.status(500).json({ success: false, message: error.message || 'Lỗi khi tạo ma trận và bản đặc tả bằng AI' });
   }
-});
+};
 
-// 5. AI Generator: Sinh đề kiểm tra mẫu và đầy đủ các phần câu hỏi có LaTeX
-app.post('/api/generate-exam', async (req, res) => {
+app.post('/api/matrix/generate', handleMatrixGenerate);
+app.post('/api/generate-matrix-spec', handleMatrixGenerate);
+
+// 5. AI Generator: Sinh đề kiểm tra mẫu và đầy đủ các phần câu hỏi có LaTeX (Supporting both /api/exam/generate and /api/generate-exam)
+const handleExamGenerate = async (req: express.Request, res: express.Response) => {
   try {
+    const rawInfo = req.body.info || req.body;
     const {
-      subject,
-      grade,
-      examType,
-      durationMinutes,
-      structureOption,
-      matrix,
-      specification,
-      requirementsText,
-    } = req.body;
+      subject = 'Toán học',
+      grade = 'Lớp 12',
+      examType = 'Kiểm tra Giữa Học kì 1',
+      durationMinutes = 45,
+      structureOption = 'option1',
+    } = rawInfo;
+
+    const matrix = req.body.matrix;
+    const specification = req.body.specification;
 
     statsData.totalExamsGenerated += 1;
 
@@ -438,17 +446,33 @@ TRẢ VỀ JSON HỢP LỆ VỚI CẤU TRÚC:
     const resultText = response.text || '{}';
     const parsedData = JSON.parse(resultText);
 
-    res.json(parsedData);
+    res.json({
+      success: true,
+      examPackage: {
+        info: rawInfo,
+        matrix: matrix || {},
+        specification: specification || [],
+        questions: parsedData.questions || {
+          part1: [],
+          part2: [],
+          part3: [],
+          part4: [],
+        },
+      },
+    });
   } catch (error: any) {
-    console.error('Error in generate-exam:', error);
-    res.status(500).json({ error: error.message || 'Lỗi khi sinh đề thi bằng AI' });
+    console.error('Error in exam generation:', error);
+    res.status(500).json({ success: false, message: error.message || 'Lỗi khi sinh đề thi bằng AI' });
   }
-});
+};
+
+app.post('/api/exam/generate', handleExamGenerate);
+app.post('/api/generate-exam', handleExamGenerate);
 
 // 6. Parse Document Text (support TXT / Base64 docx extract)
 app.post('/api/parse-document', async (req, res) => {
   try {
-    const { content, fileName, fileType } = req.body;
+    const { content, fileName } = req.body;
     if (!content) {
       return res.status(400).json({ error: 'Không có dữ liệu tệp tin' });
     }
@@ -464,7 +488,7 @@ app.post('/api/parse-document', async (req, res) => {
   }
 });
 
-// Increment download counter
+// 7. Increment download counter
 app.post('/api/stats/download', (req, res) => {
   statsData.totalWordDownloads += 1;
   res.json({ success: true, count: statsData.totalWordDownloads });
