@@ -1,0 +1,6 @@
+{
+  "name": "EduMatrix AI - Xây Dựng Ma Trận, Đặc Tả & Đề Thi Chuẩn BGD",
+  "description": "Hệ thống AI chuyên nghiệp hỗ trợ giáo viên tất cả các môn học và cấp học xây dựng ma trận, đặc tả, sinh đề kiểm tra định kỳ chuẩn Bộ GD&ĐT, trộn 4 mã đề và xuất file Word.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
